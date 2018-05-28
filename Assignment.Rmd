@@ -1,0 +1,156 @@
+---
+title: "Practical Machine Learning Course Assignment"
+author: "Jonathan Gregory"
+date: "27 May 2018"
+output: html_document
+---
+
+
+## Introduction
+
+Six participants were asked to perform exercises in five different way, both incorrectly and correctly. I used accelerometer data from the belt, forearm, arm, and dumbell to train two models to predict the way exercises were being performed. I tested the models' predictions against 25% of the accellerometer data to pick the best model for making predictions from the test data.
+
+Further details on the data are available here [linked page](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) .
+
+## Work environment
+```{r libraries, include = FALSE}
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(lubridate)
+library(caret)
+library(reshape2)
+library(randomForest)
+library(e1071)
+library(corrplot)
+library(gbm)
+```
+The details of my R session were
+```{r session, echo =TRUE}
+sessionInfo()
+```
+To make the work reproducable, I set a random seed
+
+``` {r seed, echo = TRUE}
+set.seed(1234)
+```
+
+## Importing data
+
+``` {r import_data, echo = TRUE}
+urlTraining <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urlTesting <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+Training_data <- read.csv(url(urlTraining))
+Testing_data <- read.csv(url(urlTesting))
+```
+
+## Partition data
+
+For model selection and validation purposes the training data was split into a training and validation set
+
+```{r partition, echo = TRUE}
+inTrain <- createDataPartition(Training_data$classe,p=0.75, list = FALSE)
+
+Validation_data<- Training_data[-inTrain,]
+Training_data <- Training_data[inTrain,]
+```
+
+##Cleaning the data
+
+I removed identifier variables, variables with near-zero variance, and variables with mostly null values.
+
+```{r cleandata, echo = TRUE}
+Training_data <- Training_data[,-(1:5)]
+Testing_data <- Testing_data[,-(1:5)] 
+Validation_data <- Validation_data[,-(1:5)]
+
+
+remove_variables <- nearZeroVar(Training_data)
+Training_data <- Training_data[,-remove_variables]
+Testing_data <- Testing_data[,-remove_variables]
+Validation_data <- Validation_data[,-remove_variables]
+
+remove_NA_variables <- sapply(Training_data, function (x) {sum(is.na(x)) > (nrow(Training_data) *0.9)})
+Training_data <- Training_data[,!remove_NA_variables]
+Testing_data <- Testing_data[,!remove_NA_variables]
+Validation_data <- Validation_data[,!remove_NA_variables]
+
+```
+
+
+## Preprocessing
+
+I centred and scaled the data using caret's preProcess function
+
+```{r preProcess, echo = TRUE}
+preObj<- preProcess(Training_data[,2:53])
+Training_data[,2:53] <- predict(preObj, newdata= Training_data[,2:53])
+Validation_data[,2:53] <- predict(preObj, newdata = Validation_data[,2:53])
+Testing_data[,2:53] <- predict(preObj, newdata = Testing_data[,2:53])
+```
+
+
+Check the traiing data for highly correlated variables with the corrplot package
+
+``` {r correlation, echo = FALSE}
+C <- cor(Training_data[,2:53])
+corrplot(C)
+```
+
+Several variables are highly correlated. I could use PCA to create new features, but it tends not to make
+large differences to predictions for decision tree type models.
+
+### Train a random forest Model
+
+I used the "randomForest"" method from the package "randomForest"" rather than using caret's "rf" method due to the excessive computation time for the "rf" method.
+
+```{r randomForest, echo = TRUE}
+setwd("C:/Users/jonat/Documents/Coursera/Data Science/8.Practical Machine Learning")
+if(exists ("RF_model_fit.Rda")) {
+  RF_model_fit <- load("RF_model_fit.Rda")
+    } else {
+x1 = Training_data[,1:53]
+y2 = Training_data[,54]
+RF_model_fit <- randomForest(x= x1,y = y2 , na.action = na.omit)
+save(RF_model_fit, file = "RF_model_fit.Rda")}
+```
+
+## Train a gradient boosted model
+
+```{r gbm, echo = TRUE}
+setwd("C:/Users/jonat/Documents/Coursera/Data Science/8.Practical Machine Learning")
+
+if (exists("gbm_model.Rda")) {
+  gbm_model<-load("gbm_model.Rda")} else {
+gbm_model<- gbm(classe~., data = Training_data, n.trees = 300)
+  save(gbm_model, file = "gbm_model.Rda")}
+```
+
+## Model selection
+
+I selected which of the two models to use for predicting the test set outcomes by compaing the OOB accuracies of the two models.
+
+```{r accuracy, echo = TRUE}
+x2<-Validation_data[,1:53]
+y2<- Validation_data[,54]
+  
+RF_OOB_confusion<- confusionMatrix(predict(RF_model_fit,                                    newdata=x2),y2)
+
+gbm_model_confusion <- confusionMatrix(factor(apply(predict(gbm_model, newdata = Validation_data[,1:53], n.trees = 300, type = 'response'),1,which.max), labels = c("A","B","C","D","E")),Validation_data$classe)
+
+```
+
+The random forest model had an accuracy of `r RF_OOB_confusion$overall[2] ` compared to the gradient boosted model's accuract of `r gbm_model_confusion$overall[2]`.
+
+The random forest model was more accurate, so I chose to use it for my final predictions.
+
+## Predictions
+
+I used the random forest model to predict the outcomes of the test set data.
+
+```{r predict, echo = TRUE}
+predictions <- predict(RF_model_fit, newdata = Testing_data[,1:53])
+print(predictions)
+
+```
