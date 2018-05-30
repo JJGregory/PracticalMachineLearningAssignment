@@ -162,7 +162,8 @@ Model selection
 ---------------
 
 I selected which of the two models to use for predicting the test set
-outcomes by compaing the OOB accuracies of the two models.
+outcomes by compaing the OOB accuracies of the two models. The OOB
+accuracies were calculated using the partitioned validation set.
 
     x2<-Validation_data[,1:53]
     y2<- Validation_data[,54]
@@ -172,10 +173,19 @@ outcomes by compaing the OOB accuracies of the two models.
     gbm_model_confusion <- confusionMatrix(factor(apply(predict(gbm_model, newdata = Validation_data[,1:53], n.trees = 300, type = 'response'),1,which.max), labels = c("A","B","C","D","E")),Validation_data$classe)
 
 The random forest model had an accuracy of 0.9974206 compared to the
-gradient boosted model's accuract of 0.3931858.
+gradient boosted model's accuracy of 0.3931858.
 
-The random forest model was more accurate, so I chose to use it for my
-final predictions.
+### Out of sample error estimate
+
+The out of sample error is estimatedfrom 1 minus the OOB accuracy.
+
+The random forest model has an estimated out of sample error of
+`1-r RF_OOB_confusion$overall[2]` compared to the gradient boosted
+model's estimated out of sample error of
+`1- r gbm_model_confusion$overall[2]`. \#\#\# Model selection
+
+The random forest model has a lower estimated out of sample error, so I
+chose to use it for my final predictions.
 
 Predictions
 -----------
